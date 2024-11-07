@@ -8,7 +8,7 @@
 
 sem_t writer_queue;       // Queue for readers
 sem_t reader_queue;       // Queue for writers
-pthread_mutex_t write_count_lock; // Mutex to protect writer_count
+pthread_mutex_t write_count_lock; // Mutex to protect writer_count, tránh tình trạng race condition của các thread
 pthread_mutex_t reader_lock; // Mutex to ensure only one reader at a time
 int writer_count = 0;     // Current number of writers
 int write_count_timer = MAX_WRITERS; // Counter to limit writers
@@ -88,8 +88,8 @@ int main() {
     int reader_ids[num_readers], writer_ids[num_writers];
 
     // Initialize semaphores and mutexes
-    sem_init(&writer_queue, 0, MAX_WRITERS);       // Only one reader can request at a time
-    sem_init(&reader_queue, 0, 1);       // Only one writer allowed at a time
+    sem_init(&writer_queue, 0, MAX_WRITERS);      
+    sem_init(&reader_queue, 0, 1);
     pthread_mutex_init(&write_count_lock, NULL);
     pthread_mutex_init(&reader_lock, NULL);
 
