@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdlib.h> // Để sử dụng srand(), rand()
+#include <time.h>   // Để sử dụng time()
+#include <windows.h>
 #define SIZE 1000
 #define MAX 10
 
-int readcount=1;
 
 sem_t resource;                    // controls access (read/write) to the resource
 sem_t rmutex;                      // for syncing changes to shared variable readcount
@@ -27,29 +29,6 @@ int read_count_timer = MAX; // Biến timer để đếm số lượng reader v�
 
 pthread_t readers[SIZE], writers[SIZE];  // Mảng lưu thread reader và writer
 
-//char client[][10] =
-//{
-//    "reader", "writer", "reader", "reader", "reader", "reader", "writer",
-//    "reader", "reader", "reader", "reader", "reader", "writer", "reader",
-//    "reader", "reader", "reader", "reader", "writer", "reader", "writer",
-//    "writer", "writer", "reader"
-//};
-
-//char client[][10] =
-//{
-//    "reader", "reader", "reader", "reader", "reader", "reader", "writer",
-//    "reader", "reader", "reader", "reader", "reader", "writer", "reader",
-//    "reader", "reader", "reader", "reader", "reader", "reader", "reader",
-//    "reader", "reader", "reader"
-//};
-//
-//char client[][10] =
-//{
-//    "reader", "writer", "writer", "writer", "writer", "writer", "writer",
-//    "reader", "writer", "writer", "writer", "writer", "writer", "writer",
-//    "writer", "writer", "writer", "writer", "writer", "writer", "writer",
-//    "writer", "writer"
-//};
 
 int num_readers = 0;
 int num_writers = 0;
@@ -61,8 +40,8 @@ void *reader_fairness(void *arg)
     // ENTRY Section
     sem_wait(&serviceQueue);       // wait in line to be serviced
     sem_wait(&rmutex);             // request exclusive access to readcount
-    readcount++;                   // update count of active readers
-    if (readcount == 1)            // if I am the first reader
+    reader_count++;                   // update count of active readers
+    if (reader_count == 1)            // if I am the first reader
     {
         sem_wait(&resource);       // request resource access for readers (writers blocked)
     }
@@ -70,12 +49,12 @@ void *reader_fairness(void *arg)
     sem_post(&rmutex);             // release access to readcount
 
     // CRITICAL Section
-    printf("Reader %ld is reading\n", (long)arg);
+    printf("Reader %jd is reading\n", (intptr_t)arg);
 
     // EXIT Section
     sem_wait(&rmutex);             // request exclusive access to readcount
-    readcount--;                   // update count of active readers
-    if (readcount == 0)            // if there are no readers left
+    reader_count--;                   // update count of active readers
+    if (reader_count == 0)            // if there are no readers left
     {
         sem_post(&resource);       // release resource access for all
     }
@@ -86,14 +65,14 @@ void *reader_fairness(void *arg)
 // Writer function
 void *writer_fairness(void *arg)
 {
-//    printf("Writer %ld is in queue\n", (long)arg);
+    //    printf("Writer %ld is in queue\n", (long)arg);
     // ENTRY Section
     sem_wait(&serviceQueue);       // wait in line to be serviced
     sem_wait(&resource);           // request exclusive access to resource
     sem_post(&serviceQueue);       // let next in line be serviced
 
     // CRITICAL Section
-    printf("Writer %ld is writing\n", (long)arg);
+    printf("Writer %jd is writing\n", (intptr_t)arg);
     // EXIT Section
     sem_post(&resource);           // release resource access for next reader/writer
 
@@ -123,11 +102,11 @@ void fairness()
 
         if (is_reader && num_readers > 0) {
             num_readers--; // Giảm số lượng readers
-            pthread_create(&all_threads[i], NULL, reader_fairness, (void *)(long)i);
+            pthread_create(&all_threads[i], NULL, reader_fairness, (void *)(intptr_t)i);
         }
         else if (!is_reader && num_writers > 0) {
             num_writers--; // Giảm số lượng writers
-            pthread_create(&all_threads[i], NULL, writer_fairness, (void *)(long)i);
+            pthread_create(&all_threads[i], NULL, writer_fairness, (void *)(intptr_t)i);
         } else {
             // Nếu không còn Reader hay Writer nào để tạo, giảm i và thử lại
             i--;
@@ -167,7 +146,7 @@ void *reader_1(void *arg) {
     pthread_mutex_unlock(&read_count_lock); // Mở khóa sau khi thay đổi reader_count và read_count_timer
 
     // Đọc dữ liệu (giả lập bằng sleep)
-    sleep(1);
+    Sleep(1);
 
     // Khóa để thay đổi reader_count
     pthread_mutex_lock(&read_count_lock);
