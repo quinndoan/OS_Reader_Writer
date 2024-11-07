@@ -9,7 +9,6 @@
 
 
 sem_t resource;                    // controls access (read/write) to the resource
-sem_t rmutex;                      // for syncing changes to shared variable readcount
 sem_t serviceQueue;                // FAIRNESS: preserves ordering of requests (FIFO)
 
 sem_t reader_queue;   // Hàng đợi cho reader
@@ -39,26 +38,25 @@ void *reader_fairness(void *arg)
 //    printf("Reader %ld is in queue\n", (long)arg);
     // ENTRY Section
     sem_wait(&serviceQueue);       // wait in line to be serviced
-    sem_wait(&rmutex);             // request exclusive access to readcount
+    pthread_mutex_lock(&read_count_lock);
     reader_count++;                   // update count of active readers
     if (reader_count == 1)            // if I am the first reader
     {
         sem_wait(&resource);       // request resource access for readers (writers blocked)
     }
     sem_post(&serviceQueue);       // let next in line be serviced
-    sem_post(&rmutex);             // release access to readcount
-
+    pthread_mutex_unlock(&read_count_lock);
     // CRITICAL Section
     printf("Reader %jd is reading\n", (intptr_t)arg);
 
     // EXIT Section
-    sem_wait(&rmutex);             // request exclusive access to readcount
+    pthread_mutex_lock(&read_count_lock);
     reader_count--;                   // update count of active readers
     if (reader_count == 0)            // if there are no readers left
     {
         sem_post(&resource);       // release resource access for all
     }
-    sem_post(&rmutex);             // release access to readcount
+    pthread_mutex_unlock(&read_count_lock);
     return NULL;
 }
 
@@ -84,7 +82,6 @@ void fairness()
 {
     // Initialize semaphores
     sem_init(&resource, 0, 1);     // Binary semaphore for resource (1 for read/write access)
-    sem_init(&rmutex, 0, 1);       // Semaphore for protecting readcount (mutex)
     sem_init(&serviceQueue, 0, 1); // Binary semaphore for FIFO queue handling
 
     // Seed for random number generation
@@ -120,7 +117,6 @@ void fairness()
 
     // Destroy semaphores
     sem_destroy(&resource);
-    sem_destroy(&rmutex);
     sem_destroy(&serviceQueue);
 
 }
