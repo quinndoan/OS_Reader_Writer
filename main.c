@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
-#define SIZE 30
+#define SIZE 1000
 #define MAX 10
 
 int readcount=1;
@@ -27,13 +27,13 @@ int read_count_timer = MAX; // Biến timer để đếm số lượng reader v�
 
 pthread_t readers[SIZE], writers[SIZE];  // Mảng lưu thread reader và writer
 
-char client[][10] =
-{
-    "reader", "writer", "reader", "reader", "reader", "reader", "writer",
-    "reader", "reader", "reader", "reader", "reader", "writer", "reader",
-    "reader", "reader", "reader", "reader", "writer", "reader", "writer",
-    "writer", "writer", "reader"
-};
+//char client[][10] =
+//{
+//    "reader", "writer", "reader", "reader", "reader", "reader", "writer",
+//    "reader", "reader", "reader", "reader", "reader", "writer", "reader",
+//    "reader", "reader", "reader", "reader", "writer", "reader", "writer",
+//    "writer", "writer", "reader"
+//};
 
 //char client[][10] =
 //{
@@ -42,7 +42,7 @@ char client[][10] =
 //    "reader", "reader", "reader", "reader", "reader", "reader", "reader",
 //    "reader", "reader", "reader"
 //};
-
+//
 //char client[][10] =
 //{
 //    "reader", "writer", "writer", "writer", "writer", "writer", "writer",
@@ -104,34 +104,39 @@ void *writer_fairness(void *arg)
 void fairness()
 {
     // Initialize semaphores
-    sem_init(&resource, 0, 1);     // Binary semaphore for resource
-    sem_init(&rmutex, 0, 1);       // Binary semaphore for readcount access
-    sem_init(&serviceQueue, 0, 1); // Binary semaphore for service queue fairness
+    sem_init(&resource, 0, 1);     // Binary semaphore for resource (1 for read/write access)
+    sem_init(&rmutex, 0, 1);       // Semaphore for protecting readcount (mutex)
+    sem_init(&serviceQueue, 0, 1); // Binary semaphore for FIFO queue handling
 
-    // Create reader and writer threads
-    for (long i = 0; i < SIZE; i++)
-    {
-        if (strcmp(client[i], "reader") == 0)
-        {
-            pthread_create(&readers[i], NULL, reader_fairness, (void *)i);
+    // Seed for random number generation
+    srand(time(NULL));
+
+    // Create reader and writer threads in random order
+    int total_threads = num_readers + num_writers;
+
+    // Mảng để theo dõi các thread đã tạo
+    pthread_t all_threads[total_threads];
+
+    for (int i = 0; i < total_threads; i++) {
+        // Chọn ngẫu nhiên giữa Reader (0) và Writer (1)
+        int is_reader = rand() % 2; // 0: Reader, 1: Writer
+
+        if (is_reader && num_readers > 0) {
+            num_readers--; // Giảm số lượng readers
+            pthread_create(&all_threads[i], NULL, reader_fairness, (void *)(long)i);
         }
-        else if (strcmp(client[i], "writer") == 0)
-        {
-            pthread_create(&writers[i], NULL, writer_fairness, (void *)i);
+        else if (!is_reader && num_writers > 0) {
+            num_writers--; // Giảm số lượng writers
+            pthread_create(&all_threads[i], NULL, writer_fairness, (void *)(long)i);
+        } else {
+            // Nếu không còn Reader hay Writer nào để tạo, giảm i và thử lại
+            i--;
         }
     }
 
-    // Join các thread reader và writer
-    for (long i = 0; i < SIZE; i++)
-    {
-        if (strcmp(client[i], "reader") == 0)
-        {
-            pthread_join(readers[i], NULL);
-        }
-        else if (strcmp(client[i], "writer") == 0)
-        {
-            pthread_join(writers[i], NULL);
-        }
+    // Đợi tất cả các thread hoàn thành
+    for (int i = 0; i < total_threads; i++) {
+        pthread_join(all_threads[i], NULL);
     }
 
     // Destroy semaphores
@@ -210,7 +215,6 @@ void *writer_1(void *arg) {
 
 void reader_prefer()
 {
-
     pthread_t readers[num_readers], writers[num_writers];
     int reader_ids[num_readers], writer_ids[num_writers];
 
@@ -350,14 +354,10 @@ void writer_prefer()
 }
 int main()
 {
-
-    for (int i = 0; i < SIZE; i++)
-    {
-        if (strcmp(client[i], "reader") == 0)   num_readers++;
-        else if (strcmp(client[i], "writer") == 0)  num_writers++;
-    }
-    printf("Number of readers: %d\n", num_readers);
-    printf("Number of writers: %d\n", num_writers);
+    printf("Enter the number of readers: ");
+    scanf("%d", &num_readers);
+    printf("Enter the number of writers: ");
+    scanf("%d", &num_writers);
 
     if(num_readers/10 >= num_writers) reader_prefer();
     else if(num_writers/10 >= num_readers) writer_prefer();
