@@ -9,7 +9,8 @@
 sem_t writer_queue;       // Queue for readers
 sem_t reader_queue;       // Queue for writers
 pthread_mutex_t write_count_lock; // Mutex to protect writer_count, tránh tình trạng race condition của các thread
-pthread_mutex_t reader_lock; // Mutex to ensure only one reader at a time
+pthread_mutex_t reader_lock; 
+pthread_mutex_t resource;
 int writer_count = 0;     // Current number of writers
 int write_count_timer = MAX_WRITERS; // Counter to limit writers
 
@@ -20,6 +21,7 @@ void *writer(void *arg) {
     sem_wait(&writer_queue);
 
     pthread_mutex_lock(&write_count_lock);
+    pthread_mutex_lock(&resource);            // giữ resource cho riêng mình
     writer_count++;
     write_count_timer--;
 
@@ -33,7 +35,7 @@ void *writer(void *arg) {
 
     // Simulate writing
     sleep(1);
-
+    pthread_mutex_unlock(&resource);           // nhả resource
     pthread_mutex_lock(&write_count_lock);
     writer_count--;
 
@@ -92,6 +94,7 @@ int main() {
     sem_init(&reader_queue, 0, 1);
     pthread_mutex_init(&write_count_lock, NULL);
     pthread_mutex_init(&reader_lock, NULL);
+    pthread_mutex_init(&resource, NULL);
 
     // Create writer threads
     for (int i = 0; i < num_writers; i++) {
@@ -119,6 +122,7 @@ int main() {
     sem_destroy(&reader_queue);
     pthread_mutex_destroy(&write_count_lock);
     pthread_mutex_destroy(&reader_lock);
+    pthread_mutex_destroy(&resource);
 
     return 0;
 }
