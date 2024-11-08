@@ -6,8 +6,9 @@
 
 #define MAX_READERS 10
 
-sem_t reader_queue;   // Hàng đợi cho reader
+sem_t reader_queue;   // Hàng đợi cho reader, 
 sem_t writer_queue;   // Hàng đợi cho writer
+// không dùng sem_t resource vì đã có sem_t cho writer và reader
 pthread_mutex_t read_count_lock; // Mutex để bảo vệ biến reader_count
 pthread_mutex_t writer_lock; // Mutex để đảm bảo chỉ có một writer vào tại một thời điểm
 int reader_count = 0; // Số lượng reader hiện tại
