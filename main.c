@@ -124,7 +124,7 @@ void fairness()
 void *reader_1(void *arg) {
     int id = *(int *)arg;
     
-    // Wait in writer queue for access
+    // Wait in reader queue for access
     sem_wait(&reader_queue);
 
     pthread_mutex_lock(&read_count_lock);
@@ -132,7 +132,7 @@ void *reader_1(void *arg) {
     reader_count++;
     read_count_timer--;
 
-    // If this is the first writer, block readers
+    // If this is the first reader, block writers
     if (reader_count == 1) {
         sem_wait(&writer_queue);
     }
@@ -140,28 +140,28 @@ void *reader_1(void *arg) {
     printf("Reader %d accessed the resource. (Timer: %d)\n", id, read_count_timer);
     pthread_mutex_unlock(&read_count_lock);
     pthread_mutex_unlock(&read_timer_lock);
-    // Simulate writing
+    // Simulate reading
     sleep(1);
 
     pthread_mutex_lock(&read_count_lock);
     reader_count--;
 
-    // If no writers are left, allow readers to access
+    // If no readers are left, allow writers to access
     if (reader_count == 0) {
         sem_post(&writer_queue);
     }
     pthread_mutex_unlock(&read_count_lock);
 
-    // Reset timer and allow reader access if the writer limit is reached
+    // Reset timer and allow reader access if the reader limit is reached
     if (read_count_timer == 0) {
         pthread_mutex_lock(&read_timer_lock);
         read_count_timer = MAX; // Reset the timer
-        sem_post(&writer_queue);         // Allow readers to access
+        sem_post(&writer_queue);         // Allow writers to access
         sleep(1);
         pthread_mutex_unlock(&read_timer_lock);
     }
      pthread_mutex_unlock(&writer_lock);
-    // Allow the next writer in the queue
+    // Allow the next reader in the queue
     sem_post(&reader_queue);
 
     return NULL;
@@ -171,16 +171,16 @@ void *reader_1(void *arg) {
 void *writer_1(void *arg) {
     int id = *(int *)arg;
 
-    // Wait in the reader queue for access
+    // Wait in the writer queue for access
     sem_wait(&writer_queue);
     
-    // Only one reader can access at a time
+    // Only one writer can access at a time
     pthread_mutex_lock(&writer_lock);
     printf("Writer %d accessed the resource.\n", id);
-    sleep(10); // Simulate reading
+    sleep(10); // Simulate writing
     pthread_mutex_unlock(&writer_lock);
 
-    // Allow the next reader in the queue
+    // Allow the next writer in the queue
     sem_post(&writer_queue);
 
     return NULL;
