@@ -16,7 +16,8 @@ sem_t writer_queue;   // Hàng đợi cho writer
 
 pthread_mutex_t write_count_lock; // Mutex to protect writer_count
 pthread_mutex_t reader_lock; // Mutex to ensure only one reader at a time
-        
+pthread_mutex_t resource_writer;
+pthread_mutex_t write_timer_lock;     
 int writer_count = 0;     // Current number of writers
 int write_count_timer = MAX; // Counter to limit writers
 
@@ -231,21 +232,21 @@ void *writer_2(void *arg) {
     sem_wait(&writer_queue);
 
     pthread_mutex_lock(&write_count_lock);
-    sem_wait(&resource);            // giữ resource cho riêng mình
+    pthread_mutex_lock(&write_timer_lock);
     writer_count++;
     write_count_timer--;
-
+    
     // If this is the first writer, block readers
     if (writer_count == 1) {
         sem_wait(&reader_queue);
     }
-    
-    printf("Writer %d accessed the resource. (Total writers: %d, Timer: %d)\n", id, writer_count, write_count_timer);
+    pthread_mutex_lock(&resource_writer);            // keep resource for its writer
+    printf("Writer %d accessed the resource. (Timer: %d)\n", id, write_count_timer);
     pthread_mutex_unlock(&write_count_lock);
-
+    pthread_mutex_unlock(&write_timer_lock);
     // Simulate writing
     sleep(1);
-    sem_post(&resource);           // nhả resource
+    pthread_mutex_unlock(&resource_writer);           // release resource
     pthread_mutex_lock(&write_count_lock);
     writer_count--;
 
@@ -257,10 +258,12 @@ void *writer_2(void *arg) {
 
     // Reset timer and allow reader access if the writer limit is reached
     if (write_count_timer == 0) {
+        pthread_mutex_lock(&write_timer_lock);
         write_count_timer = MAX; // Reset the timer
         sem_post(&reader_queue);         // Allow readers to access
         sleep(1);
-        write_count_timer = MAX; 
+        pthread_mutex_unlock(&write_timer_lock);
+        
     }
      pthread_mutex_unlock(&reader_lock);
     // Allow the next writer in the queue
@@ -278,7 +281,7 @@ void *reader_2(void *arg) {
     // Only one reader can access at a time
     pthread_mutex_lock(&reader_lock);
     printf("Reader %d accessed the resource.\n", id);
-    sleep(1); // Simulate reading
+    sleep(11); // Simulate reading and wait for reset timer
     pthread_mutex_unlock(&reader_lock);
 
     // Allow the next reader in the queue
@@ -299,7 +302,8 @@ void writer_prefer()
     sem_init(&resource, 0, 1);    
     pthread_mutex_init(&write_count_lock, NULL);
     pthread_mutex_init(&reader_lock, NULL);
-
+    pthread_mutex_init(&write_timer_lock, NULL);
+    pthread_mutex_init(&resource_writer, NULL);
     // Create writer threads
     for (int i = 0; i < num_writers; i++) {
         writer_ids[i] = i + 1;
@@ -326,6 +330,8 @@ void writer_prefer()
     sem_destroy(&reader_queue);
     pthread_mutex_destroy(&write_count_lock);
     pthread_mutex_destroy(&reader_lock);
+    pthread_mutex_destroy(&resource_writer);
+    pthread_mutex_destroy(&write_timer_lock);
 
 }
 int main()

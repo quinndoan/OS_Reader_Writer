@@ -40,7 +40,7 @@ void *reader(void *arg) {
     pthread_mutex_lock(&read_count_lock);
     reader_count--;
 
-    // If no writers are left, allow readers to access
+    // If no readers are left, allow writers to access
     if (reader_count == 0) {
         sem_post(&writer_queue);
     }
