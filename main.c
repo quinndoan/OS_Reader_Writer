@@ -137,7 +137,7 @@ void *reader_1(void *arg) {
         sem_wait(&writer_queue);
     }
     
-    printf("Reader %d accessed the resource. (Total readers: %d, Timer: %d)\n", id, reader_count, read_count_timer);
+    printf("Reader %d accessed the resource. (Timer: %d)\n", id, read_count_timer);
     pthread_mutex_unlock(&read_count_lock);
     pthread_mutex_unlock(&read_timer_lock);
     // Simulate writing
