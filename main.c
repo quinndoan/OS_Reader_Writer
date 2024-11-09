@@ -32,7 +32,6 @@ pthread_t readers[SIZE], writers[SIZE];  // Mảng lưu thread reader và writer
 int num_readers = 0;
 int num_writers = 0;
 
-// Reader function
 void *reader_fairness(void *arg)
 {
 //    printf("Reader %ld is in queue\n", (long)arg);
@@ -40,6 +39,7 @@ void *reader_fairness(void *arg)
     sem_wait(&serviceQueue);       // wait in line to be serviced
     pthread_mutex_lock(&read_count_lock);
     reader_count++;                   // update count of active readers
+    printf("Reader %jd is reading\n", (intptr_t)arg);
     if (reader_count == 1)            // if I am the first reader
     {
         sem_wait(&resource);       // request resource access for readers (writers blocked)
@@ -47,7 +47,6 @@ void *reader_fairness(void *arg)
     sem_post(&serviceQueue);       // let next in line be serviced
     pthread_mutex_unlock(&read_count_lock);
     // CRITICAL Section
-    printf("Reader %jd is reading\n", (intptr_t)arg);
 
     // EXIT Section
     pthread_mutex_lock(&read_count_lock);
@@ -67,10 +66,10 @@ void *writer_fairness(void *arg)
     // ENTRY Section
     sem_wait(&serviceQueue);       // wait in line to be serviced
     sem_wait(&resource);           // request exclusive access to resource
+    printf("Writer %jd is writing\n", (intptr_t)arg);
     sem_post(&serviceQueue);       // let next in line be serviced
 
     // CRITICAL Section
-    printf("Writer %jd is writing\n", (intptr_t)arg);
     // EXIT Section
     sem_post(&resource);           // release resource access for next reader/writer
 
