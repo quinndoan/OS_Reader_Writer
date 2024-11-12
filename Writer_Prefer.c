@@ -17,12 +17,15 @@ int write_count_timer = MAX_WRITERS; // Counter to limit writers
 
 void *writer(void *arg) {
     int id = *(int *)arg;
-    
+    /*
+    Entry section
+    */
     // Wait in writer queue for access
     sem_wait(&writer_queue);
-
+    /*
+    Critial section
+    */
     pthread_mutex_lock(&write_count_lock);
-   // pthread_mutex_lock(&resource);            // keep resource for its writer
     pthread_mutex_lock(&write_timer_lock);
     writer_count++;
     write_count_timer--;
@@ -67,6 +70,7 @@ void *reader(void *arg) {
     int id = *(int *)arg;
 
     // Wait in the reader queue for access
+    
     sem_wait(&reader_queue);
     
     // Only one reader can access at a time
@@ -77,6 +81,7 @@ void *reader(void *arg) {
 
     // Allow the next reader in the queue
     sem_post(&reader_queue);
+    
 
     return NULL;
 }

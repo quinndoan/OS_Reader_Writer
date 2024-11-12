@@ -7,13 +7,13 @@
 
 #define MAX_READERS 10
 
-sem_t writer_queue;       // Queue for readers
-sem_t reader_queue;       // Queue for writers
-pthread_mutex_t read_count_lock; // Mutex to protect writer_count, tránh tình trạng race condition của các thread
-pthread_mutex_t writer_lock; // Mutex to ensure only one reader at a time
+sem_t writer_queue;       // Queue for writers
+sem_t reader_queue;       // Queue for readers
+pthread_mutex_t read_count_lock; // Mutex to protect reader_count, tránh tình trạng race condition của các thread
+pthread_mutex_t writer_lock; // Mutex to ensure only one writer at a time
 pthread_mutex_t read_timer_lock;
-int reader_count = 0;     // Current number of writers
-int read_count_timer = MAX_READERS; // Counter to limit writers
+int reader_count = 0;     
+int read_count_timer = MAX_READERS; // Counter to limit readers
 
 void *reader(void *arg) {
     int id = *(int *)arg;
@@ -31,14 +31,14 @@ void *reader(void *arg) {
     reader_count++;
     read_count_timer--;
 
-    // If this is the first writer, block readers
+    // If this is the first reader, block writers
     if (reader_count == 1) {
         sem_wait(&writer_queue);
     }
     /*
-    Exit the critial
+    Exit critial section
     */
-    printf("Reader %d accessed the resource. (Total readers: %d, Timer: %d)\n", id, reader_count, read_count_timer);
+    printf("Reader %d accessed the resource. (Timer: %d)\n", id, read_count_timer);
     pthread_mutex_unlock(&read_count_lock);
     pthread_mutex_unlock(&read_timer_lock);
     // Simulate reading
@@ -59,11 +59,11 @@ void *reader(void *arg) {
     /*
     Control Limit
     */
-    // Reset timer and allow reader access if the writer limit is reached
+    // Reset timer and allow writer access if the reader limit is reached
     if (read_count_timer == 0) {
         pthread_mutex_lock(&read_timer_lock);
         read_count_timer = MAX_READERS; // Reset the timer
-        sem_post(&writer_queue);         // Allow readers to access
+        sem_post(&writer_queue);         // Allow writers to access
         sleep(1);
         pthread_mutex_unlock(&read_timer_lock);
     }
