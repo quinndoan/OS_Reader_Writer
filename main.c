@@ -6,6 +6,8 @@
 #include <windows.h>
 #define SIZE 1000
 #define MAX 10
+#define MAX_READERS 10
+#define MAX_WRITERS 10
 
 
 sem_t resource;                    // controls access (read/write) to the resource
@@ -14,12 +16,14 @@ sem_t serviceQueue;                // FAIRNESS: preserves ordering of requests (
 sem_t reader_queue;   // Hàng đợi cho reader
 sem_t writer_queue;   // Hàng đợi cho writer
 
+pthread_mutex_t write_timer_lock;
 pthread_mutex_t write_count_lock; // Mutex to protect writer_count
 pthread_mutex_t reader_lock; // Mutex to ensure only one reader at a time
 
 int writer_count = 0;     // Current number of writers
 int write_count_timer = MAX; // Counter to limit writers
 
+pthread_mutex_t read_timer_lock;
 pthread_mutex_t read_count_lock; // Mutex để bảo vệ biến reader_count
 pthread_mutex_t writer_lock; // Mutex để đảm bảo chỉ có một writer vào tại một thời điểm
 
@@ -127,48 +131,61 @@ void fairness()
 
 void *reader_1(void *arg) {
     int id = *(int *)arg;
-
-    // Đợi trong hàng đợi reader
+    /*
+    Entry section
+    */
+    // Wait in reader queue for access
     sem_wait(&reader_queue);
 
-    // Khóa để thay đổi reader_count và read_count_timer
+    /*
+    Critical section
+    */
     pthread_mutex_lock(&read_count_lock);
+    pthread_mutex_lock(&read_timer_lock);
     reader_count++;
     read_count_timer--;
 
-    // Nếu là reader đầu tiên, chặn writer
+    // If this is the first reader, block writers
     if (reader_count == 1) {
         sem_wait(&writer_queue);
     }
+    /*
+    Exit critial section
+    */
+    printf("Reader %d accessed the resource. (Timer: %d)\n", id, read_count_timer);
+    pthread_mutex_unlock(&read_count_lock);
+    pthread_mutex_unlock(&read_timer_lock);
+    // Simulate reading
+    sleep(1);
 
-    // In thông báo khi một reader đã truy cập tài nguyên
-    printf("Reader %d accessed the resource. (Total readers: %d, Timer: %d)\n", id, reader_count, read_count_timer);
-    pthread_mutex_unlock(&read_count_lock); // Mở khóa sau khi thay đổi reader_count và read_count_timer
-
-    // Đọc dữ liệu (giả lập bằng sleep)
-    Sleep(1);
-
-    // Khóa để thay đổi reader_count
+    /*
+    Critial section
+    */
     pthread_mutex_lock(&read_count_lock);
     reader_count--;
 
-    // Nếu không còn reader nào, mở khóa cho writer
+    // If no readers are left, allow writers to access
     if (reader_count == 0) {
         sem_post(&writer_queue);
     }
-    pthread_mutex_unlock(&read_count_lock); // Mở khóa sau khi thay đổi reader_count
+    pthread_mutex_unlock(&read_count_lock);
 
-    // Kiểm tra nếu timer là 0 và đặt lại timer, cho phép writer
-    pthread_mutex_lock(&writer_lock);
+    /*
+    Control Limit
+    */
+    // Reset timer and allow writer access if the reader limit is reached
     if (read_count_timer == 0) {
-
-        sem_post(&writer_queue); // Cho phép một writer vào
-        Sleep(1);                 // Để writer có thời gian truy cập
-        read_count_timer = MAX; // Đặt lại timer về MAX_READERS
+        pthread_mutex_lock(&read_timer_lock);
+        read_count_timer = MAX_READERS; // Reset the timer
+        sem_post(&writer_queue);         // Allow writers to access
+        sleep(1);
+        pthread_mutex_unlock(&read_timer_lock);
     }
-    pthread_mutex_unlock(&writer_lock); // Mở khóa sau khi cho phép một writer vào và reset timer
-
-    // Cho phép reader tiếp theo vào hàng đợi
+    /*
+    Exit critial section
+    */
+    pthread_mutex_unlock(&writer_lock);
+    // Allow the next reader in the queue
     sem_post(&reader_queue);
 
     return NULL;
@@ -176,17 +193,25 @@ void *reader_1(void *arg) {
 
 void *writer_1(void *arg) {
     int id = *(int *)arg;
-
-    // Đợi trong hàng đợi writer
+    /*
+    Entry section
+    */
+    // Wait in the writer queue for access
     sem_wait(&writer_queue);
 
-    // Kiểm soát writer lock để chắc chắn chỉ một writer vào
+    /*
+    Critial section
+    */
+    // Only one writer can access at a time
     pthread_mutex_lock(&writer_lock);
     printf("Writer %d accessed the resource.\n", id);
-    sleep(1); // Giả lập thời gian ghi
-    pthread_mutex_unlock(&writer_lock); // Giải phóng quyền truy cập của writer
+    sleep(10); // Simulate writing
+    pthread_mutex_unlock(&writer_lock);
 
-    // Cho phép writer tiếp theo vào hàng đợi
+    /*
+    Exit critial
+    */
+    // Allow the next writer in the queue if no reader need resource
     sem_post(&writer_queue);
 
     return NULL;
@@ -197,46 +222,57 @@ void reader_prefer()
     pthread_t readers[num_readers], writers[num_writers];
     int reader_ids[num_readers], writer_ids[num_writers];
 
-    // Khởi tạo semaphore và mutex
-    sem_init(&reader_queue, 0, MAX); // Giới hạn số reader đồng thời
-    sem_init(&writer_queue, 0, 1); // Giới hạn một writer
+    // Initialize semaphores and mutexes
+    sem_init(&reader_queue, 0, MAX_READERS);
+    sem_init(&writer_queue, 0, 1);
     pthread_mutex_init(&read_count_lock, NULL);
     pthread_mutex_init(&writer_lock, NULL);
+    pthread_mutex_init(&read_timer_lock, NULL);
 
-    // Tạo các reader
+    // Create reader threads
     for (int i = 0; i < num_readers; i++) {
         reader_ids[i] = i + 1;
         pthread_create(&readers[i], NULL, reader_1, &reader_ids[i]);
     }
 
-    // Tạo các writer
+        // Create writer threads
     for (int i = 0; i < num_writers; i++) {
         writer_ids[i] = i + 1;
         pthread_create(&writers[i], NULL, writer_1, &writer_ids[i]);
     }
 
-    // Đợi các thread hoàn tất
+    // Wait for all reader threads to complete
     for (int i = 0; i < num_readers; i++) {
         pthread_join(readers[i], NULL);
     }
+
+
+    // Wait for all writer threads to complete
     for (int i = 0; i < num_writers; i++) {
         pthread_join(writers[i], NULL);
     }
 
-    // Hủy các semaphore và mutex
-    sem_destroy(&reader_queue);
+    // Destroy semaphores and mutexes
     sem_destroy(&writer_queue);
+    sem_destroy(&reader_queue);
     pthread_mutex_destroy(&read_count_lock);
     pthread_mutex_destroy(&writer_lock);
+    pthread_mutex_destroy(&read_timer_lock);
+
 }
 
 void *writer_2(void *arg) {
     int id = *(int *)arg;
-
+    /*
+    Entry section
+    */
     // Wait in writer queue for access
     sem_wait(&writer_queue);
-
+    /*
+    Critial section
+    */
     pthread_mutex_lock(&write_count_lock);
+    pthread_mutex_lock(&write_timer_lock);
     writer_count++;
     write_count_timer--;
 
@@ -244,13 +280,13 @@ void *writer_2(void *arg) {
     if (writer_count == 1) {
         sem_wait(&reader_queue);
     }
-
-    printf("Writer %d accessed the resource. (Total writers: %d, Timer: %d)\n", id, writer_count, write_count_timer);
+    pthread_mutex_lock(&resource);            // keep resource for its writer
+    printf("Writer %d accessed the resource. (Timer: %d)\n", id, write_count_timer);
     pthread_mutex_unlock(&write_count_lock);
-
+    pthread_mutex_unlock(&write_timer_lock);
     // Simulate writing
     sleep(1);
-
+    pthread_mutex_unlock(&resource);           // release resource
     pthread_mutex_lock(&write_count_lock);
     writer_count--;
 
@@ -262,10 +298,12 @@ void *writer_2(void *arg) {
 
     // Reset timer and allow reader access if the writer limit is reached
     if (write_count_timer == 0) {
-        write_count_timer = MAX; // Reset the timer
+        pthread_mutex_lock(&write_timer_lock);
+        write_count_timer = MAX_WRITERS; // Reset the timer
         sem_post(&reader_queue);         // Allow readers to access
         sleep(1);
-        write_count_timer = MAX;
+        pthread_mutex_unlock(&write_timer_lock);
+
     }
      pthread_mutex_unlock(&reader_lock);
     // Allow the next writer in the queue
@@ -278,16 +316,18 @@ void *reader_2(void *arg) {
     int id = *(int *)arg;
 
     // Wait in the reader queue for access
+
     sem_wait(&reader_queue);
 
     // Only one reader can access at a time
     pthread_mutex_lock(&reader_lock);
     printf("Reader %d accessed the resource.\n", id);
-    sleep(1); // Simulate reading
+    sleep(11); // Simulate reading and wait for reset timer
     pthread_mutex_unlock(&reader_lock);
 
     // Allow the next reader in the queue
     sem_post(&reader_queue);
+
 
     return NULL;
 }
@@ -296,12 +336,13 @@ void writer_prefer()
 {
     pthread_t readers[num_readers], writers[num_writers];
     int reader_ids[num_readers], writer_ids[num_writers];
-
-    // Initialize semaphores and mutexes
-    sem_init(&writer_queue, 0, MAX);       // Only one reader can request at a time
-    sem_init(&reader_queue, 0, 1);       // Only one writer allowed at a time
+     // Initialize semaphores and mutexes
+    sem_init(&writer_queue, 0, MAX_WRITERS);
+    sem_init(&reader_queue, 0, 1);
     pthread_mutex_init(&write_count_lock, NULL);
     pthread_mutex_init(&reader_lock, NULL);
+    pthread_mutex_init(&write_timer_lock, NULL);
+    pthread_mutex_init(&resource, NULL);
 
     // Create writer threads
     for (int i = 0; i < num_writers; i++) {
@@ -329,6 +370,8 @@ void writer_prefer()
     sem_destroy(&reader_queue);
     pthread_mutex_destroy(&write_count_lock);
     pthread_mutex_destroy(&reader_lock);
+    pthread_mutex_destroy(&resource);
+    pthread_mutex_destroy(&write_timer_lock);
 
 }
 int main()
